@@ -1,0 +1,305 @@
+---
+title: "Cyclistic"
+author: "Agbebiyi A"
+date: "3/14/2022"
+output: 
+  html_document: 
+    theme: journal
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(purrr)
+library(lubridate)
+library(Hmisc)
+```
+
+## **Introduction**
+
+## Cyclistic Bikes Usage by Member Type
+> Cyclistic has two categories of membership: Members and Casual. The primary difference these two categories lies in the type of pricing plan purchased. Members outrightly purchased annual plans while casual members purchased either the single-ride passes or full-day passes.
+The finance team at Cyclistic has concluded that annual members are much more profitable that casual members. Cyclistic hopes to be able convert its casual members to annual members via a marketing campaign.
+
+>Three questions will guide the future marketing program:
+
+1. How do annual members and casual riders use Cyclistic bikes  differently?
+
+2. Why would casual riders buy Cyclistic annual membership?
+
+3. How can Cyclistic use digital media to influence casual riders to    become members?
+
+
+### __Objective__
+The objective of this project is to answer the first question:
+  
+  > _How do annual members and causal members use Cyclistic bikes differently?_
+
+
+---
+
+## __Executive Summary__
+
+  > Annual members rented Cyclistic bikes for shorter periods than casual members; typically ending a ride or rental within the first five hours. Casual members tended to use the bikes for much longer periods with many more rides than annual members going over ten hours.
+  
+  > Annual members recorded weekday usage rates between **7.8%** to **8.6%** of total rides. while casual members recorded weekday usage rates between **4.5%** to **6.2%** of total rides.
+  Annual members had usage rates of **6.8%** and **7.9%** respectively on Sundays and Saturdays with casual members, the rates were **8.7%** and **10.2%** on Sundays and Saturdays respectively. 
+  Annual members generally had a fairly even usage rate across each day. 
+
+  > Annual members had an overwhelming preference for Classic bikes with usage of **46.5%** and casual members, **29.0%**. With Electric bikes, **13.5%** of annual members preferred them to **11.0%** of casual members. 
+
+---
+
+
+# __Method__
+
+
+The data is located here: [Cyclistic Data](https://divvy-tripdata.s3.amazonaws.com/index.html "Google Data Analytics Capstone Project") on Amazon Web Services cloud platform.
+
+The data is stored in an index of bucket "divvy-tripdata" which is an index of monthly comma separated values (csv) files. The data has been made available by Motivate International Inc. under this [license](https://ride.divvybikes.com/data-license-agreement). The last 12 months of data was used: __February 2021 to January 2022__. The files were each inspected to check for consistency of data type and columns before they were loaded in RStudio. 
+
+
+
+
+Import and create dataframe:
+```{r}
+cyclistic <- list.files(path ="Cyclistic_CVS_/", pattern =".csv"
+                            ,full.names = T)
+
+cyclistic_df <- map_dfr(.x = cyclistic, .f = read_csv, 
+                            show_col_types =FALSE)
+```
+
+
+A quick inspection of the dataframe created:
+```{r}
+
+summary(cyclistic_df)
+
+```
+A look at the feedback above reveals there are NA as well as missing values in some of the  columns. These columns do not ordinarily impact on the outcome of the business task but for the sake of completeness, they will be removed:
+  
+  
+```{r}
+
+cyclistic_df_na <- cyclistic_df %>% na.omit()
+
+```
+
+It is assumed that each ride is unique as such each ride_id should be unique and unrepeatable. For this reason, the ride_id column is filtered for unique values:
+
+```{r}
+cyclistic_drm<-cyclistic_df_na %>% 
+     distinct(ride_id, .keep_all = TRUE)
+```
+
+The __member_casual__ column name could do with a better title: __member_type__ and in the same vein, the __member__ value in that column will be replaced with __annual__ for a clearer distinction of member types.
+
+```{r}
+cyclistic_drm$member_casual[cyclistic_drm$member_casual == "member"] <- "annual"
+
+cyclistic_cln<- cyclistic_drm %>% rename("member_type" = "member_casual")
+
+
+```
+
+From the summary results above, it can be seen that started_at and ended_at columns are stored as characters, they need to be converted the appropriate format, this will make it possible to find the difference between the start and end time for each trip and create a column for the results in **ride_length**:
+
+
+```{r}
+cyclistic_cln$started_at<- mdy_hms(cyclistic_cln$started_at)
+
+cyclistic_cln$ended_at<- mdy_hms(cyclistic_cln$ended_at)
+
+cyclistic_m<- cyclistic_cln %>% 
+  mutate(ride_length = hms::as_hms(ended_at - started_at))
+
+```
+
+Similarly, a new column containing the day of the week, **day_of_week**, in numerical form will be created to ascertain the days that riders used the bikes;
+1 representing Sunday, 2 representing Monday and so on.
+
+```{r}
+
+cyclistic_m<- cyclistic_m %>% mutate(day_of_week = wday(started_at))
+
+```
+
+
+```{r , echo=FALSE}
+cyclistic_v <- View(cyclistic_m)
+```
+
+Calling View on cyclistic_m and foll0wing a  quick inspection of the __ride_length__ column revealed that some _unique_ ride_ids  have the same start and end times which does not provide meaningfully contribution since they are essentially null values, negative values will also be removed; they will be removed by subsetting:
+
+```{r}
+
+null_rides<-cyclistic_m %>% 
+ subset(cyclistic_m$ride_length == 00:00:00)
+
+neg_rides <- cyclistic_m %>% 
+  subset(cyclistic_m$ride_length < 00:00:00)
+
+```
+
+A docked bike is not a type of bike but rather a process or system is storing bikes in specified places after use. The rideable_type column has entries with "Docked bikes":
+
+```{r}
+cyclistic_sdb <- cyclistic_m %>% 
+  subset(cyclistic_m$rideable_type != 'docked_bike')
+```
+
+
+All other observations are contained below:
+```{r}
+cyclistic_sset <- cyclistic_m %>% 
+  subset(cyclistic_m$ride_length > 00:00:00 & cyclistic_m$rideable_type != 'docked_bike')
+```
+
+
+
+A minimalist selection of key columns:
+```{r}
+cyclistic_mn <- cyclistic_sset %>% 
+  select(ride_id, rideable_type,member_type,ride_length,day_of_week)
+
+cyclistic_mn
+```
+
+## Summary Statistics
+
+Here is summary of some measurable statistics:
+```{r, echo=FALSE}
+cyclistic_ds <- cyclistic_mn %>% select(rideable_type, member_type, ride_length) %>%  describe()
+
+ridemean<- mean(cyclistic_mn$ride_length)
+ridemax<- max(cyclistic_mn$ride_length)
+ridemin<- min(cyclistic_mn$ride_length)
+riderange<- range(cyclistic_mn$ride_length)
+ridesd<- sd(cyclistic_mn$ride_length)
+
+cyclistic_ds
+
+
+```
+
+
+## Visualisation
+
+A visualisation of rides by day of week by members:
+```{r, echo=FALSE}
+gdowc <-  cyclistic_mn %>%
+  count(day_of_week, member_type)%>%
+  mutate(percentage =scales::percent(n / sum(n), accuracy = .1, trim = FALSE))
+
+cwdm <- ggplot (data = gdowc, aes(x = day_of_week, y=n, fill = member_type))
+cwdm <- cwdm + geom_col(position = 'dodge')
+
+
+cwdm <- cwdm + theme_minimal()+
+labs(title ="Rides by Day of Week", subtitle ="By Membership", x = "Day of Week"
+     ,y = "Count")
+
+
+
+gdowc
+```
+
+```{r}
+cwdm
+```
+
+
+About a third (32.6%) of all rides occurred over the weekends (Saturday and Sunday) with Saturday representing about a fifth (17.6%) of rides. The remaining rides occurred weekdays (Monday to Friday) 
+
+
+From the graph above, it can clearly be seen that __casual__ members were not as inclined to weekday rides as were __annual__ members. Casual members rode more over the weekends than weekdays. Saturday was the most active day for casual riders. 
+
+
+---
+
+A visualisation of rides by ride duration:
+```{r, echo=FALSE}
+grlc <-  cyclistic_mn %>%
+  count(ride_length, member_type)%>%
+  mutate(percentage = n/sum(n) * 100)
+
+crl <- ggplot (data = grlc, aes(x = hms::as_hms(ride_length), fill = member_type))
+crl <- crl + geom_histogram(position = 'dodge', bins = 11)
+crl <- crl + theme_minimal()+
+labs(title ="Rides by Duration", subtitle ="By Membership", x = "Ride Length (hours)", y = "Count") 
+
+
+grlc
+```
+
+
+```{r}
+crl
+```
+
+The graph above indicates that __annual__ members rode or rented bikes for much shorter periods than __casual__ members. Within the first five hours, there is no significant difference in the the number of rides between member types. There is a pronounced difference, however, in the number of rides greater than ten hours with casual members tending to ride for lengthier periods. 
+
+
+ --- 
+ 
+A visualisation of rides by bike type:
+
+```{r, echo=FALSE}
+
+grtc <-  cyclistic_mn %>%
+  count( rideable_type, member_type)%>%
+  mutate(percentage =scales::percent(n / sum(n), accuracy = .1, trim = FALSE))
+
+crt <- ggplot (data = grtc, aes(x = rideable_type, y=n, fill = member_type))
+crt <- crt + geom_col(position = 'dodge')
+
+                         
+
+crt <- crt + theme_minimal()
+
+crt <- crt + labs(title="Cyclistic: Rides By Bike Type"
+                    ,x= "Rideable Type(Bikes)",  y= "Count"
+                    , subtitle="By Membership")
+grtc
+```
+
+
+```{r}
+crt
+```
+
+Of the two types of bikes available, the Classic bike was the preferred bike with about 75.4% of rides. By member type, 46.5% of annual members preferred them compared to 28.9% of casual members. The Electric bike was preferred by 24.5% of riders with 13.5% being annual members and 11% being casual riders. Annual members showed an overwhelming preference for Classic bikes. 
+
+
+
+---
+
+## Conclusion:
+
+There are `r nrow(cyclistic_mn)` rides in the dataset. Of this number, 60.1% were rides by **annual** members while the remaining 39.9% were rides by **casual** members. 
+
+  >Annual members rode the bikes for shorter periods than casual members.
+
+  >The Classic bike was the preferred choice of bikes.
+  
+  >Casual members were more active over the weekends than weekdays - it is possible that most are leisure riders.
+
+
+
+
+
+---
+## Recommendations:
+
+Cyclistic can run an advertising campaign around how the current annual members use its bikes: 
+
+ >Advertisments showing how Cyclistic bikes can be useful for getting around weekdays besides weekends - useful for more than just weekend or leisure rides.
+ 
+ >Perhaps explore how Cyclistic bikes enables its annual members live a more active lifestlye with its attendant health benefits.
+ 
+ >Perhaps explore how Cyclistic bikes enables its annual members help reduce carbon emissions and contribute to keeping greenhouse gases low.
+
